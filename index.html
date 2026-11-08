@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>محول PDF إلى صوت</title>
+<style>
+:root{--bg:#14110d;--bg2:#1c1812;--card:#221d15;--ink:#f3ead9;--mut:#a89c85;--gold:#d9a441;--gold2:#f0c46a;--line:#3a3226;--ok:#6fbf8b}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#2a2115 0,transparent 60%),var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,system-ui,sans-serif;line-height:1.7;padding:env(safe-area-inset-top,0) 0 calc(32px + env(safe-area-inset-bottom,0))}
+main{max-width:900px;margin:0 auto;padding:16px 14px}
+header h1{margin:.2em 0 .1em;font-size:1.7rem;color:var(--gold2);letter-spacing:.3px}
+header p{margin:0 0 16px;color:var(--mut)}
+button,select,input{font-family:inherit}
+:focus-visible{outline:3px solid var(--gold2);outline-offset:2px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+label{display:block;font-weight:700;margin:8px 0 4px}
+select,input[type=file]{width:100%;padding:12px;font-size:1rem;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--gold)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{flex:1 1 22%;min-height:54px;font-size:1.02rem;font-weight:700;border-radius:12px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);cursor:pointer}
+.btn.main{flex-basis:100%;background:linear-gradient(135deg,var(--gold),#b8802a);color:#1a1307;border:0;min-height:62px;font-size:1.2rem}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;width:0;background:var(--gold);transition:width .3s}
+#us{font-weight:700;margin:10px 0 0}
+#now{margin-top:12px;background:var(--bg2);border-radius:12px;padding:14px;min-height:5em;max-height:12em;overflow:auto;font-size:1.25rem;line-height:2}
+.note{color:var(--mut);font-size:.88rem;margin-top:6px}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>🎧 محول PDF إلى صوت</h1>
+<p>ارفعي ملف PDF (نصي أو صور ممسوحة ضوئياً أو باهتة) ليتم استخراج النص وتدقيقه وقراءته بصوت طبيعي وواضح.</p>
+</header>
+
+<section id="up">
+<div class="box">
+<label for="f">ملف الكتاب (PDF نصي أو مسح ضوئي)</label>
+<input id="f" type="file" accept="application/pdf,.pdf">
+
+<label for="voice">اختيار الصوت العربي</label>
+<select id="voice">
+  <option value="ar-SA-HamedNeural">حامد (صوت ذكوري واضح - السعودية)</option>
+  <option value="ar-SA-ZariyahNeural">زارية (صوت أنثوي ناعم - السعودية)</option>
+  <option value="ar-EG-SalmaNeural">سلمى (صوت أنثوي - مصر)</option>
+  <option value="ar-EG-ShakirNeural">شاكر (صوت ذكوري - مصر)</option>
+</select>
+
+<label for="rt">السرعة: <span id="rv">1.0</span>×</label>
+<input id="rt" type="range" min="0.5" max="1.6" step="0.1" value="1">
+<label for="vl">مستوى الصوت: <span id="vv">100</span>٪</label>
+<input id="vl" type="range" min="0" max="1" step="0.05" value="1">
+<button class="btn" id="test" style="width:100%;margin-top:10px">🔊 جرّب الصوت</button>
+</div>
+
+<div class="box">
+<button class="btn main" id="play" disabled>▶ ابدأ القراءة</button>
+<div class="row">
+<button class="btn" id="pause" disabled>⏸ مؤقت</button>
+<button class="btn" id="stop" disabled>⏹ إيقاف</button>
+<button class="btn" id="prev" disabled>⏮ السابقة</button>
+<button class="btn" id="next" disabled>التالية ⏭</button>
+</div>
+<p id="us" role="status" aria-live="polite">اختر ملف PDF للبدء.</p>
+<div class="bar" aria-hidden="true"><i id="ub"></i></div>
+<div id="now" aria-live="off">سيظهر هنا النص الذي يُقرأ الآن.</div>
+</div>
+</section>
+</main>
+
+<audio id="ttsAudio" hidden></audio>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+const API_URL = "https://arabic-tts-hxe5.onrender.com";
+
+const $=id=>document.getElementById(id);
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}return null};
+
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+let doc=null,n=0,pg=0,ci=0,chs=[],playing=false,tk=0,fkey="",ocrWorker=null;
+const say=t=>{$("us").textContent=t};
+const ttsAudio=$("ttsAudio");
+
+$("rt").oninput=()=>{$("rv").textContent=(+$("rt").value).toFixed(1); ttsAudio.playbackRate=+$("rt").value;};
+$("vl").oninput=()=>{$("vv").textContent=Math.round($("vl").value*100); ttsAudio.volume=+$("vl").value;};
+
+/* ---------- معالجة وتدقيق النص العربي ودمج الحروف المقطعة ---------- */
+function preprocessArabicText(text) {
+  if (!text) return "";
+  let clean = text.normalize("NFKC");
+  clean = clean.replace(/\u0640/g, "").replace(/[\u200B-\u200F\uFEFF]/g, "");
+  clean = clean.replace(/https?:\/\/\S+/gi, " ").replace(/\S+@\S+\.\S+/g, " ");
+  clean = clean.replace(/\b[A-Za-z]+\b/g, " ");
+  clean = clean.replace(/[^\u0600-\u06FF0-9\s.,!?;:،؛؟\-–—()«»""'']/g, " ");
+  clean = clean.replace(/(?:\s|^)([\u0621-\u064A](?:\s+[\u0621-\u064A]){2,})(?=\s|$|[.,!?;:،؛؟])/g, (match
